@@ -37,12 +37,9 @@ def active() -> list[tuple[str, str, str, str]]:
         if not p or not p["key"]:
             continue
         per_provider.append([(name, p["url"], p["key"], m) for m in dict.fromkeys(m for m in p["models"] if m)])
-    # Main model of each provider first, then their backups, so a backup request goes to a
-    # different provider (Featherless allows only a few requests at once on small plans).
-    out = []
-    for tier in range(max((len(x) for x in per_provider), default=0)):
-        out += [models[tier] for models in per_provider if tier < len(models)]
-    return out
+    # In LLM_ORDER: every model of the first provider, then the next provider.
+    # (A same-provider backup that hits a concurrency limit just fails fast and the next one starts.)
+    return [m for models in per_provider for m in models]
 
 
 def enabled() -> bool:
@@ -62,7 +59,7 @@ def _model_options(model: str, max_tokens: int) -> dict:
     """Reasoning models think before answering: keep that short and hidden, and leave room for it."""
     m = model.lower()
     if "gpt-oss" in m:
-        return {"reasoning_effort": "low", "max_tokens": max_tokens + 400}
+        return {"reasoning_effort": "low", "max_tokens": max_tokens + 250}
     if m.startswith("gemini-2.5"):
         return {"reasoning_effort": "none" if "flash" in m else "low", "max_tokens": max_tokens + 300}
     if m.startswith("gemini"):
