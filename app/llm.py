@@ -1,6 +1,6 @@
 """Language model calls. Every provider here speaks the OpenAI chat format, so switching is just env vars.
 
-Townie tries each provider that has a key, in LLM_ORDER (default: featherless, gemini, groq),
+Townie tries each provider that has a key, in LLM_ORDER (default: groq, featherless, gemini),
 and each provider's main model before its backup model. Add a key and it joins the list."""
 import asyncio
 import json
