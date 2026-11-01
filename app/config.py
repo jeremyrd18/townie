@@ -25,6 +25,9 @@ LLM_ORDER = env("LLM_ORDER", "groq,featherless,gemini")
 GROQ_API_KEY = env("GROQ_API_KEY")
 GROQ_MODEL = env("GROQ_MODEL", "openai/gpt-oss-120b")
 GROQ_FALLBACK_MODEL = env("GROQ_FALLBACK_MODEL", "qwen/qwen3.8-27b")
+# Model used with live web search for "latest" questions (events, open now, current people).
+SEARCH_MODEL = env("SEARCH_MODEL", "openai/gpt-oss-20b")
+WEB_SEARCH = env("WEB_SEARCH", "on").lower() != "off"
 GROQ_STT_MODEL = env("GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
 GEMINI_API_KEY = env("GEMINI_API_KEY")

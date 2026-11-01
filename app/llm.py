@@ -133,6 +133,46 @@ async def chat(messages: list, max_tokens: int = 120, temperature: float = 0.5,
             task.cancel()
 
 
+CITATION = re.compile(r"【[^】]*】|\[\d+\]")
+
+
+async def search_chat(messages: list, timeout: float = 7.0) -> str | None:
+    """Answer with live web results (Groq's built-in browser search on gpt-oss). None on failure."""
+    global last_used
+    if not config.GROQ_API_KEY:
+        return None
+    # Only the search model: web search uses lots of quota, so keep the main answer model free.
+    for model in [config.SEARCH_MODEL]:
+        text = await _search_once(model, messages, timeout)
+        if text:
+            last_used = f"groq-search:{model}"
+            return text
+    return None
+
+
+async def _search_once(model: str, messages: list, timeout: float) -> str | None:
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(PROVIDERS["groq"]["url"], headers={"Authorization": f"Bearer {config.GROQ_API_KEY}"}, json={
+                "model": model,
+                "messages": messages,
+                "tools": [{"type": "browser_search"}],
+                "tool_choice": "required",
+                "reasoning_effort": "low",
+                "temperature": 0.2,
+                "max_tokens": 1200,
+            })
+            r.raise_for_status()
+            text = (r.json()["choices"][0]["message"].get("content") or "").strip()
+    except Exception as e:
+        print(f"[search] {model} failed: {e!r}")
+        return None
+    text = CITATION.sub("", text).replace("\u202f", " ").replace("\u00a0", " ").strip()
+    if not text or GARBAGE.search(text):
+        return None
+    return text
+
+
 def parse_json(text: str | None):
     """Pull the first JSON object out of a model reply."""
     if not text:

@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from . import llm, places
+from . import config, llm, places, web
 from .landmarks import find_in_text
 
 FALLBACK_LINES = [
@@ -25,6 +25,17 @@ CATEGORY_WORDS = {
 }
 
 INTENTS = ["nearest", "distance", "whats_here", "recommend", "fact", "general", "other"]
+
+# Questions that need up-to-date info from the web, not the model's memory.
+FRESH_WORDS = ["now", "right now", "today", "tonight", "this week", "this weekend", "weekend", "tomorrow",
+               "latest", "current", "currently", "recent", "recently", "still", "new", "newest", "these days",
+               "open", "closed", "hours", "event", "events", "happening", "going on", "concert", "show", "shows",
+               "festival", "game", "playing", "score", "weather", "forecast", "mayor", "who runs", "price",
+               "cost", "tickets", "schedule", "news", "2025", "2026"]
+
+
+def needs_web(question: str) -> bool:
+    return _has(question.lower().replace("’", "'"), FRESH_WORDS)
 
 # Questions answered from the model's own knowledge, not a map lookup.
 GENERAL_STARTS = ("who ", "when ", "why ", "how tall", "how old", "how big", "how many", "how much", "what year",
@@ -66,7 +77,10 @@ def rule_intent(question: str) -> dict | None:
                              "not a chain", "local", "worth"])
         return {"intent": "recommend" if wants_rec else "nearest", "category": category, "destination": None}
 
-    if _has(q, ["what should we do", "what to do", "thing to do", "things to do", "tonight", "recommend", "worth seeing"]):
+    if _has(q, ["tonight", "this weekend", "happening", "going on", "events", "concert", "festival", "game tonight"]):
+        return {"intent": "general", "category": None, "destination": landmark["name"] if landmark else None}
+
+    if _has(q, ["what should we do", "what to do", "thing to do", "things to do", "recommend", "worth seeing"]):
         return {"intent": "recommend", "category": "attraction", "destination": None}
 
     if landmark and _has(q, ["where", "which way", "direction"]):
@@ -183,6 +197,8 @@ SAY_SYSTEM = (
     "- Nearest / find a place: the place name, walking minutes and direction or street. Nothing else.\n"
     "- Knowledge questions (how tall, when, why, what is): just the direct answer, like a number, year or short definition.\n"
     "- Fun fact, tell me about, what's that building: a short answer with one interesting detail is fine.\n"
+    "- If FACTS include web_results, answer from them; they are live and newer than what you know. "
+    "Never invent specific times, games, scores or events that are not in FACTS.\n"
     "- Places, distances, walking times and directions: use ONLY what FACTS give. Never invent a business or address. "
     "Other knowledge comes from what you know, accurately.\n"
     "- Minutes, never metres. Simple words, short fragments are fine. No filler like honestly, yeah, sure, let's, just.\n"
@@ -198,8 +214,31 @@ SAY_SYSTEM = (
 )
 
 
-async def write_line(question: str, facts: dict) -> str:
-    now = datetime.now(ZoneInfo("America/Toronto")).strftime("%A %-I:%M %p")
+SEARCH_SYSTEM = (
+    "You are Townie, a quiet earpiece for someone showing friends around Toronto. Search the web for current info, "
+    "then whisper the answer in plain, simple words, 15 words or fewer. Answer only the exact question. "
+    "Prefer results for today's date and for Toronto near the given location. Name specific places, events or people. "
+    "No citations, links, dashes, or filler. Never say you searched. Output only the answer."
+)
+
+
+async def write_line(question: str, facts: dict, here: str = "") -> str:
+    now = datetime.now(ZoneInfo("America/Toronto")).strftime("%A %B %-d, %Y, %-I:%M %p")
+    kind = facts.get("intent")
+    # Up-to-date questions: answer from live web results. Directions to nearby places stay on map data.
+    if config.WEB_SEARCH and kind in ("general", "fact", "other", "recommend") and needs_web(question):
+        reply = await llm.search_chat([
+            {"role": "system", "content": SEARCH_SYSTEM},
+            {"role": "user", "content": f"Question: {question}\nNow in Toronto: {now}\nWe are near: {here or 'downtown Toronto'}"},
+        ])
+        line = _clean(reply) if reply else ""
+        if line:
+            return line, llm.describe()
+        # Groq search is busy: use quick search results instead.
+        results = await web.snippets(f"{question} Toronto {datetime.now(ZoneInfo('America/Toronto')):%B %-d %Y}")
+        facts = {**facts, "web_results": results} if results else {
+            **facts, "note": "No live info available. Do not invent specific times, games, scores or events; "
+                             "give a safe general answer instead."}
     compact = json.dumps(_trim(facts), ensure_ascii=False)
     reply = await llm.chat([
         {"role": "system", "content": SAY_SYSTEM},
@@ -296,7 +335,8 @@ async def answer(question: str, lat: float, lon: float, heading: float | None = 
     try:
         intent = await get_intent(question)
         facts = await gather_facts(intent, question, lat, lon, heading)
-        say, writer = await write_line(question, facts)
+        near = places.nearest_landmarks(lat, lon, limit=1, max_km=3)
+        say, writer = await write_line(question, facts, near[0]["name"] if near else "")
         intent["writer"] = writer
     except Exception as e:
         print(f"[answer] failed: {e!r}")
