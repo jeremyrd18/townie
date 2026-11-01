@@ -137,6 +137,10 @@ async def ask(request: Request):
             value = request.headers.get(key) or request.query_params.get(key)
             if value:
                 fields[key] = unquote(value)
+    # Accept common spellings for the coordinates (e.g. "long" or "longitude" from the Shortcut).
+    for key, aliases in {"lat": ("latitude",), "lon": ("long", "lng", "longitude")}.items():
+        if fields.get(key) in (None, ""):
+            fields[key] = next((fields[a] for a in aliases if fields.get(a) not in (None, "")), None)
     question = (question or str(fields.get("question") or "")).strip()
     lat, lon, heading = _num(fields.get("lat")), _num(fields.get("lon")), _num(fields.get("heading"))
     demo = request.query_params.get("demo") or fields.get("demo")
