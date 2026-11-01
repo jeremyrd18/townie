@@ -24,6 +24,25 @@ CATEGORY_WORDS = {
     "attraction": ["attraction", "museum", "sightseeing", "touristy", "viewpoint", "gallery"],
 }
 
+# Cuisine word in the question -> words to look for in OSM cuisine tags or names.
+CUISINES = {
+    "chinese": ["chinese"], "dim sum": ["dim_sum", "dim sum", "chinese"], "japanese": ["japanese", "sushi", "ramen"],
+    "sushi": ["sushi"], "ramen": ["ramen"], "korean": ["korean"], "thai": ["thai"], "vietnamese": ["vietnamese", "pho"],
+    "pho": ["vietnamese", "pho"], "indian": ["indian"], "italian": ["italian", "pizza", "pasta"], "pizza": ["pizza"],
+    "mexican": ["mexican", "taco"], "tacos": ["mexican", "taco"], "burger": ["burger"], "burgers": ["burger"],
+    "vegan": ["vegan"], "vegetarian": ["vegetarian", "vegan"], "greek": ["greek"], "shawarma": ["shawarma", "lebanese"],
+    "middle eastern": ["middle_eastern", "lebanese", "shawarma"], "caribbean": ["caribbean", "jamaican"],
+    "jamaican": ["jamaican", "caribbean"], "french": ["french"], "ethiopian": ["ethiopian"],
+    "portuguese": ["portuguese"], "bbq": ["bbq", "barbecue"], "halal": ["halal"], "poutine": ["poutine"],
+    "seafood": ["seafood", "fish"], "brunch": ["breakfast", "brunch"], "bakery": ["bakery"], "dessert": ["dessert", "ice_cream"],
+}
+
+
+def find_cuisine(question: str) -> str | None:
+    q = question.lower()
+    return next((c for c in sorted(CUISINES, key=len, reverse=True) if _has(q, [c])), None)
+
+
 INTENTS = ["nearest", "distance", "whats_here", "recommend", "fact", "general", "other"]
 
 # Questions that need up-to-date info from the web, not the model's memory.
@@ -53,6 +72,8 @@ def rule_intent(question: str) -> dict | None:
     """Fast keyword rules. Most demo questions never need the model for intent."""
     q = question.lower().replace("’", "'")
     category = next((c for c, words in CATEGORY_WORDS.items() if _has(q, words)), None)
+    if not category and find_cuisine(q):
+        category = "food"
     landmark = find_in_text(q)
 
     if _has(q, ["what's that", "what is that", "whats that", "what's this", "what is this", "whats this",
@@ -130,10 +151,21 @@ async def gather_facts(intent: dict, question: str, lat: float, lon: float, head
     if kind in ("nearest", "recommend") and intent.get("category"):
         cat = intent["category"]
         skip_chains = "chain" in question.lower() or "local" in question.lower()
-        radius = 500 if kind == "nearest" else 800
-        found = await places.nearby(lat, lon, cat, radius=radius, heading=heading, skip_chains=skip_chains)
-        if not found:
-            found = await places.nearby(lat, lon, cat, radius=1200, heading=heading, skip_chains=skip_chains)
+        cuisine = find_cuisine(question) if cat == "food" else None
+        if cuisine:
+            # A specific cuisine: filter nearby restaurants by cuisine tag or name, else search by name.
+            terms = CUISINES[cuisine]
+            pool = await places.nearby(lat, lon, "food", radius=1200, heading=heading, limit=60, skip_chains=skip_chains)
+            found = [p for p in pool if any(t in f"{p.get('cuisine', '')} {p['name']}".lower() for t in terms)]
+            if not found:
+                found = await places.search_near(f"{cuisine} restaurant" if cuisine not in ("sushi", "pho", "ramen", "pizza") else cuisine,
+                                                 lat, lon, radius=1500, heading=heading)
+            facts["cuisine"] = cuisine
+        else:
+            radius = 500 if kind == "nearest" else 800
+            found = await places.nearby(lat, lon, cat, radius=radius, heading=heading, skip_chains=skip_chains)
+            if not found:
+                found = await places.nearby(lat, lon, cat, radius=1200, heading=heading, skip_chains=skip_chains)
         facts["category"] = cat
         if kind == "nearest":  # only what a "where's the nearest" answer needs
             keep = ("name", "lat", "lon", "walk_min", "direction", "street", "distance_km")
@@ -202,7 +234,8 @@ SAY_SYSTEM = (
     "- Places, distances, walking times and directions: use ONLY what FACTS give. Never invent a business or address. "
     "Other knowledge comes from what you know, accurately.\n"
     "- Minutes, never metres. Simple words, short fragments are fine. No filler like honestly, yeah, sure, let's, just.\n"
-    "- Plain punctuation, no dashes. Never mention apps, maps, GPS, or data. Never say you don't know.\n"
+    "- Plain punctuation, no dashes. Never mention apps, maps, GPS, data, FACTS, or a list. Never say you don't know.\n"
+    "- If no place in FACTS matches what they asked for, say none is close by and name the closest option.\n"
     "Examples of the style (not real answers):\n"
     "Q: where is the CN Tower -> 32 minutes southeast, about 2.5 km.\n"
     "Q: can we walk to the CN Tower -> Yes, about 9 minutes southwest.\n"
@@ -216,7 +249,7 @@ SAY_SYSTEM = (
 
 SEARCH_SYSTEM = (
     "You are Townie, a quiet earpiece for someone showing friends around Toronto. Search the web for current info, "
-    "then whisper the answer in plain, simple words, 15 words or fewer. Answer only the exact question. "
+    "then whisper the answer in plain, simple words, 20 words or fewer, at most two items. Answer only the exact question. "
     "Prefer results for today's date and for Toronto near the given location. Name specific places, events or people. "
     "No citations, links, dashes, or filler. Never say you searched. Output only the answer."
 )
@@ -268,10 +301,20 @@ def _clean(text: str) -> str:
         text = text.replace(a, b)
     if text:
         text = text[0].upper() + text[1:]
+    return _shorten(text, 28)
+
+
+def _shorten(text: str, limit: int) -> str:
+    """Cut long answers at a sentence or list break, never mid-phrase."""
     words = text.split()
-    if len(words) > 22:
-        text = " ".join(words[:20]).rstrip(",;") + "."
-    return text
+    if len(words) <= limit:
+        return text
+    cut = " ".join(words[:limit])
+    stop = max(cut.rfind(". "), cut.rfind("; "), cut.rfind(".") if cut.endswith(".") else -1)
+    if stop > len(cut) * 0.4:
+        return cut[:stop].rstrip(" .;,") + "."
+    comma = cut.rfind(", ")
+    return (cut[:comma] if comma > len(cut) * 0.5 else cut).rstrip(" .;,") + "."
 
 
 def template_line(facts: dict) -> str:

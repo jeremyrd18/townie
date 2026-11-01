@@ -308,6 +308,25 @@ async def search(query: str):
     return {"name": name, "lat": float(top["lat"]), "lon": float(top["lon"])}
 
 
+async def search_near(query: str, lat: float, lon: float, radius: int = 1500, heading=None, limit: int = 3) -> list:
+    """Named places matching a search (e.g. "chinese restaurant", "sushi") near a point, closest first."""
+    dlat = radius / 111_000
+    dlon = radius / (111_000 * math.cos(math.radians(lat)))
+    data = await _nominatim("search", {
+        "q": query, "viewbox": f"{lon - dlon},{lat + dlat},{lon + dlon},{lat - dlat}", "bounded": 1,
+        "limit": 15, "extratags": 1, "addressdetails": 1,
+    })
+    out = []
+    for d in data or []:
+        if not d.get("name"):
+            continue
+        extra = d.get("extratags") or {}
+        out.append(describe(d["name"], float(d["lat"]), float(d["lon"]), lat, lon, heading,
+                            street=(d.get("address") or {}).get("road"), cuisine=extra.get("cuisine")))
+    out.sort(key=lambda p: p["distance_m"])
+    return out[:limit]
+
+
 async def reverse(lat, lon):
     """What is at these coordinates: {name, road, neighbourhood} or None."""
     data = await _nominatim("reverse", {"lat": round(lat, 5), "lon": round(lon, 5), "zoom": 18, "addressdetails": 1})
