@@ -100,7 +100,7 @@
         lastId = e.id;
         $("heard").textContent = `“${e.question}”`;
         $("whisper").innerHTML = e.say.split(" ").map((w, i) => `<span class="word" style="animation-delay:${i * 70}ms">${esc(w)}</span>`).join(" ");
-        const via = { shortcut: "Back Tap", web: "Web app" }[e.source] || e.source;
+        const via = { shortcut: "Action Button", web: "Web app" }[e.source] || e.source;
         $("stats").innerHTML = [
           `<span class="stat">⏱ <b>${e.seconds}s</b> total</span>`,
           e.near ? `<span class="stat">📍 near <b>${esc(e.near)}</b></span>` : "",
