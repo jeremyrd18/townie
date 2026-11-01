@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Townie Live</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body { overflow: hidden; }
+    .stage { display: grid; grid-template-columns: 1.35fr 1fr; gap: 28px; height: 100vh; padding: 36px 40px; }
+    .left { display: flex; flex-direction: column; min-width: 0; }
+    .head { display: flex; align-items: center; gap: 14px; }
+    .head h1 { font-size: 30px; margin: 0; }
+    .head h1 span { color: var(--accent); }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 12px var(--ok); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .lbl { text-transform: uppercase; letter-spacing: .14em; font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+    .heard { font-size: clamp(22px, 2.6vw, 38px); color: var(--muted); margin: 0 0 34px; line-height: 1.25; }
+    .whisper { font-size: clamp(34px, 4.6vw, 72px); line-height: 1.12; font-weight: 700; margin: 0; }
+    .whisper .word { opacity: 0; display: inline-block; transform: translateY(8px); animation: in .35s forwards; }
+    @keyframes in { to { opacity: 1; transform: none; } }
+    .body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+    .stats { display: flex; gap: 12px; flex-wrap: wrap; }
+    .stat { border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; font-size: 18px; color: var(--muted); }
+    .stat b { color: var(--text); }
+    .right { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+    #map { flex: 1; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); }
+    .hist { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; max-height: 34vh; overflow: hidden; }
+    .hist div { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
+    .hist div:last-child { border: 0; }
+    .hist small { color: var(--muted); display: block; }
+    .waiting { color: var(--muted); }
+    .leaflet-container { font-family: inherit; background: #1b1f27; }
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6); }
+    .pin-you { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 0 0 8px rgba(255,181,71,.25); }
+    @media (max-width: 900px) { body { overflow: auto; } .stage { grid-template-columns: 1fr; height: auto; padding: 20px 16px; } #map { height: 300px; flex: none; } }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <section class="left">
+      <div class="head"><span class="dot"></span><h1>Town<span>ie</span> · live</h1></div>
+      <div class="body">
+        <p class="lbl">Friend asked</p>
+        <p class="heard" id="heard">Waiting for the first question…</p>
+        <p class="lbl">Whispered in the earbud</p>
+        <p class="whisper display" id="whisper"><span class="waiting">Double-tap the back of the phone to ask.</span></p>
+      </div>
+      <div class="stats" id="stats"></div>
+    </section>
+    <section class="right">
+      <div id="map"></div>
+      <div class="hist" id="hist"></div>
+    </section>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let lastId = null, map = null, layer = null;
+
+    function initMap() {
+      if (!window.L) return;
+      map = L.map("map", { zoomControl: false, attributionControl: true }).setView([43.6453, -79.3806], 15);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+      layer = L.layerGroup().addTo(map);
+    }
+
+    function drawMap(e) {
+      if (!map) return;
+      layer.clearLayers();
+      const you = L.marker([e.lat, e.lon], { icon: L.divIcon({ className: "", html: '<div class="pin-you"></div>', iconSize: [18, 18] }) });
+      you.addTo(layer);
+      const bounds = [[e.lat, e.lon]];
+      for (const p of e.points || []) {
+        L.circleMarker([p.lat, p.lon], { radius: 8, color: "#ffb547", weight: 2, fillColor: "#ff6b4a", fillOpacity: .9 })
+          .bindTooltip(p.name, { permanent: true, direction: "right", className: "" }).addTo(layer);
+        L.polyline([[e.lat, e.lon], [p.lat, p.lon]], { color: "#ffb547", weight: 1.5, opacity: .5, dashArray: "4 6" }).addTo(layer);
+        bounds.push([p.lat, p.lon]);
+      }
+      if (bounds.length > 1) map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
+      else map.setView([e.lat, e.lon], 15);
+    }
+
+    function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+    function render(entries) {
+      if (!entries.length) return;
+      const e = entries[0];
+      if (e.id !== lastId) {
+        lastId = e.id;
+        $("heard").textContent = `“${e.question}”`;
+        $("whisper").innerHTML = e.say.split(" ").map((w, i) => `<span class="word" style="animation-delay:${i * 70}ms">${esc(w)}</span>`).join(" ");
+        const via = { shortcut: "Back Tap", web: "Web app" }[e.source] || e.source;
+        $("stats").innerHTML = [
+          `<span class="stat">⏱ <b>${e.seconds}s</b> total</span>`,
+          e.near ? `<span class="stat">📍 near <b>${esc(e.near)}</b></span>` : "",
+          `<span class="stat">via <b>${esc(via)}</b></span>`,
+          e.voice ? `<span class="stat">🔊 <b>${e.voice === "elevenlabs" ? "ElevenLabs" : "backup voice"}</b></span>` : "",
+          e.heading != null ? `<span class="stat">🧭 <b>${Math.round(e.heading)}°</b></span>` : "",
+        ].join("");
+        drawMap(e);
+      }
+      $("hist").innerHTML = entries.slice(1, 6).map((x) =>
+        `<div>${esc(x.say)}<small>${esc(x.time)} · “${esc(x.question)}”</small></div>`).join("") || '<div class="waiting">Earlier answers show up here.</div>';
+    }
+
+    async function poll() {
+      try { render((await (await fetch("/api/live")).json()).entries); } catch {}
+      setTimeout(poll, 1000);
+    }
+    initMap();
+    poll();
+  </script>
+</body>
+</html>

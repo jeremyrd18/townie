@@ -1,0 +1,52 @@
+# Render Blueprint: New -> Blueprint -> pick this repo.
+# The free plan sleeps after 15 idle minutes. The /live judge screen polls every second,
+# so keep it open during judging, and the GitHub Action in .github/workflows pings it to stay warm.
+services:
+  - type: web
+    name: townie
+    runtime: python
+    plan: free
+    region: ohio
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: FEATHERLESS_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_ORDER
+        value: groq,featherless,gemini
+      - key: WHISPER_VOICE_ID
+        value: EXAVITQu4vr4xnSDxMaL
+      - key: TTS_MODEL
+        value: eleven_flash_v2_5
+      - key: STT_MODEL
+        value: scribe_v2
+      - key: FEATHERLESS_MODEL
+        value: Qwen/Qwen2.5-72B-Instruct
+      - key: FEATHERLESS_FALLBACK_MODEL
+        value: Qwen/Qwen2.5-7B-Instruct
+      - key: OSM_USER_AGENT
+        value: Townie/1.0 (+https://github.com/jeremyrd18/townie)
+      - key: DEMO_LAT
+        value: "43.6453"
+      - key: DEMO_LON
+        value: "-79.3806"
+      - key: DEMO_NAME
+        value: Venue
+      - key: RENDER_API_KEY
+        sync: false
+      - key: WORKFLOW_SLUG
+        value: townie-prep
+      - key: AGENTBOXD_API_KEY
+        sync: false
+      - key: AGENTBOXD_USERNAME
+        value: townie-larphacks

@@ -1,0 +1,14 @@
+# Free Render instances sleep after 15 idle minutes. This pings the app every 10 minutes.
+# Set it up: GitHub repo -> Settings -> Secrets and variables -> Actions -> Variables -> New:
+#   TOWNIE_URL = https://your-app.onrender.com
+name: keep-warm
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.TOWNIE_URL != '' }}
+    steps:
+      - run: curl -fsS -m 60 "${{ vars.TOWNIE_URL }}/healthz" || true

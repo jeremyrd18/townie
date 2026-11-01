@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Townie Prep</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .wrap { max-width: 680px; }
+    .stop { display: grid; grid-template-columns: 84px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .stop:last-child { border: 0; }
+    .stop .t { color: var(--accent); font-weight: 600; }
+    .stop i { color: var(--muted); display: block; margin-top: 3px; }
+    ol { padding-left: 20px; margin: 6px 0 0; } ol li { margin: 6px 0; }
+    .badge { display: inline-block; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin: 0 6px 6px 0; }
+    .badge.ok { color: var(--ok); }
+    .msg { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .msg small { color: var(--muted); display: block; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <h1 class="brand">Town<span>ie</span> prep</h1>
+      <nav class="nav"><a href="/">Ask</a><a href="/live" target="_blank">Judge screen</a></nav>
+    </div>
+    <p class="tag">Friends landing tomorrow? Get a day plan and five things to casually mention, before they arrive.</p>
+
+    <form class="panel" id="form">
+      <div class="grid2">
+        <div><label for="area">Where are you meeting?</label><input id="area" value="Union Station" list="areas"></div>
+        <div><label for="email">Email me the cheat sheet (optional)</label><input id="email" type="email" placeholder="you@example.com"></div>
+      </div>
+      <datalist id="areas">
+        <option>Union Station</option><option>Kensington Market</option><option>Distillery District</option>
+        <option>Yorkville</option><option>St. Lawrence Market</option><option>Harbourfront</option>
+      </datalist>
+      <label for="interests" style="margin-top:10px">What are your friends into?</label>
+      <textarea id="interests" placeholder="good food, a bit of history, not too touristy"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="go" type="submit">Prep me</button>
+        <span class="meta" id="status"></span>
+      </div>
+    </form>
+
+    <section class="panel" id="result" hidden>
+      <div id="badges"></div>
+      <h2 id="title" style="margin:6px 0 4px"></h2>
+      <p class="q" id="opener"></p>
+      <audio id="briefing" controls style="width:100%;margin:12px 0" hidden></audio>
+      <div id="stops"></div>
+      <h3 style="margin:18px 0 0">Five things to casually mention</h3>
+      <ol id="facts"></ol>
+    </section>
+
+    <section class="panel" id="inbox" hidden>
+      <h3 style="margin:0 0 4px">Townie's inbox</h3>
+      <p class="q">Forward your friends' "we're visiting!" email to <b id="addr"></b>. Townie replies with a plan.</p>
+      <div class="row" style="margin:12px 0"><button id="check" type="button">Check inbox and reply</button><span class="meta" id="inboxStatus"></span></div>
+      <div id="msgs"></div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("go").disabled = true;
+      const t0 = Date.now();
+      const tick = setInterval(() => $("status").textContent = `Scouting the neighbourhood… ${Math.round((Date.now() - t0) / 1000)}s`, 500);
+      try {
+        const res = await fetch("/api/prep", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ area: $("area").value, interests: $("interests").value, email: $("email").value }),
+        });
+        showPlan(await res.json());
+        $("status").textContent = "";
+      } catch {
+        $("status").textContent = "Something went wrong. Try again.";
+      } finally {
+        clearInterval(tick);
+        $("go").disabled = false;
+      }
+    });
+
+    function showPlan(d) {
+      const p = d.plan;
+      $("result").hidden = false;
+      $("badges").innerHTML = [
+        d.via === "render-workflow" ? `<span class="badge ok">Ran on Render Workflows${d.run_id ? " · " + esc(d.run_id) : ""}</span>` : `<span class="badge">Ran in the web service</span>`,
+        `<span class="badge">${esc(p.source === "llm" ? "Written by AI" : "Template plan")}</span>`,
+        `<span class="badge">${d.seconds}s</span>`,
+        d.emailed ? `<span class="badge ok">Emailed to ${esc(d.emailed)}</span>` : "",
+      ].join("");
+      $("title").textContent = p.title || "Your day";
+      $("opener").textContent = p.opener ? `Opener: “${p.opener}”` : "";
+      $("stops").innerHTML = (p.stops || []).map((s) =>
+        `<div class="stop"><span class="t">${esc(s.time)}</span><div><b>${esc(s.place)}</b><i>“${esc(s.line)}”</i></div></div>`).join("");
+      $("facts").innerHTML = (p.fun_facts || []).map((f) => `<li>${esc(f)}</li>`).join("");
+      if (d.briefing_b64) {
+        $("briefing").hidden = false;
+        $("briefing").src = `data:audio/mpeg;base64,${d.briefing_b64}`;
+      }
+    }
+
+    async function loadInbox() {
+      try {
+        const d = await (await fetch("/api/inbox")).json();
+        if (!d.enabled) return;
+        $("inbox").hidden = false;
+        $("addr").textContent = d.address || "(setting up…)";
+        $("msgs").innerHTML = (d.messages || []).map((m) =>
+          `<div class="msg">${m.direction === "outbound" ? "↗" : "↘"} <b>${esc(m.subject || "(no subject)")}</b><small>${esc(m.from)} · ${esc(m.preview)}</small></div>`).join("")
+          || '<p class="q">No mail yet.</p>';
+        if (d.error) $("inboxStatus").textContent = d.error;
+      } catch {}
+    }
+    $("check").addEventListener("click", async () => {
+      $("check").disabled = true;
+      $("inboxStatus").textContent = "Reading mail and planning…";
+      try {
+        const d = await (await fetch("/api/inbox/process", { method: "POST" })).json();
+        $("inboxStatus").textContent = d.replied.length ? `Replied to ${d.replied.map((r) => r.to).join(", ")}` : "No new mail.";
+      } catch { $("inboxStatus").textContent = "Inbox error."; }
+      $("check").disabled = false;
+      loadInbox();
+    });
+    loadInbox();
+  </script>
+</body>
+</html>

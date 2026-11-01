@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Townie</title>
+  <meta name="theme-color" content="#0f1115">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <h1 class="brand">Town<span>ie</span></h1>
+      <nav class="nav"><a href="/prep">Prep</a><a href="/live" target="_blank">Judge screen</a></nav>
+    </div>
+    <p class="tag">Your secret local. Ask anything, then say it like you always knew.</p>
+
+    <section class="panel">
+      <label for="loc">Where are you?</label>
+      <select id="loc"><option value="gps">My real location (GPS)</option></select>
+      <div class="row" style="margin-top:10px">
+        <span class="chip" id="gpsChip">GPS: off</span>
+        <span class="chip" id="compassChip">Compass: off</span>
+        <button id="compassBtn" type="button" style="padding:6px 12px;font-size:13px">Enable compass</button>
+      </div>
+    </section>
+
+    <div id="talk" class="talk" role="button" aria-label="Hold to talk">Hold to ask</div>
+    <p class="hint" id="hint">Hold the button, ask your question, let go.</p>
+
+    <form class="panel row" id="typeForm">
+      <input id="typed" placeholder="Or type a question… e.g. nearest coffee?" autocomplete="off" style="flex:1;min-width:0">
+      <button class="primary" type="submit">Ask</button>
+    </form>
+
+    <section class="panel" id="answer">
+      <p class="empty" id="empty">Your line will show up here, and play in your earbuds.</p>
+      <p class="q" id="q" hidden></p>
+      <p class="say display" id="say" hidden></p>
+      <p class="meta" id="meta" hidden></p>
+    </section>
+    <audio id="player" playsinline></audio>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
