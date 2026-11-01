@@ -72,6 +72,27 @@ async def api_config():
     }
 
 
+@app.get("/api/check")
+async def api_check():
+    """Ping each configured model once and report status and time (never shows keys)."""
+    import httpx
+    out = []
+    for name, url, key, model in llm.active():
+        t = time.perf_counter()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(url, headers={"Authorization": f"Bearer {key}"}, json={
+                    "model": model, "messages": [{"role": "user", "content": "Say ok."}],
+                    **llm._model_options(model, 20)})
+            status = r.status_code
+            detail = "" if status == 200 else r.text[:200]
+        except Exception as e:
+            status, detail = "error", repr(e)[:200]
+        out.append({"model": f"{name}:{model}", "status": status,
+                    "seconds": round(time.perf_counter() - t, 2), "detail": detail})
+    return {"models": out}
+
+
 # ---------- ask ----------
 
 def _num(v):
