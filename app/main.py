@@ -1,9 +1,11 @@
 """Townie web service: /api/ask for the whisper, /live for the judges, /prep for Prep mode."""
 import base64
+import json
 import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
@@ -100,10 +102,19 @@ async def ask(request: Request):
                 question = await voice.transcribe(data, audio.filename or "audio.webm", audio.content_type or "audio/webm") or ""
             source = fields.get("source", "web")
         else:
-            fields = await request.json()
+            body = await request.body()
+            fields = json.loads(body) if body.strip() else {}
+            if not isinstance(fields, dict):
+                fields = {}
     except Exception as e:
         print(f"[ask] bad request body: {e!r}")
 
+    # Also accept the fields as headers or URL parameters (easy to mix up in the Shortcuts app).
+    for key in ("question", "lat", "lon", "heading"):
+        if fields.get(key) in (None, ""):
+            value = request.headers.get(key) or request.query_params.get(key)
+            if value:
+                fields[key] = unquote(value)
     question = (question or str(fields.get("question") or "")).strip()
     lat, lon, heading = _num(fields.get("lat")), _num(fields.get("lon")), _num(fields.get("heading"))
     demo = request.query_params.get("demo") or fields.get("demo")
