@@ -69,10 +69,14 @@
         maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map);
       layer = L.layerGroup().addTo(map);
+      // Redraw tiles when the window or projector resolution changes.
+      window.addEventListener("resize", () => map.invalidateSize());
+      setTimeout(() => map.invalidateSize(), 500);
     }
 
     function drawMap(e) {
       if (!map) return;
+      map.invalidateSize();
       layer.clearLayers();
       const you = L.marker([e.lat, e.lon], { icon: L.divIcon({ className: "", html: '<div class="pin-you"></div>', iconSize: [18, 18] }) });
       you.addTo(layer);
