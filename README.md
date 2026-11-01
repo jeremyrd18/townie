@@ -7,7 +7,7 @@ LarpHacks 2026 · Theme: *Create a product to help you LARP as someone you are n
 | Piece | What it does | Cost |
 |---|---|---|
 | **ElevenLabs** | The whisper (TTS, `eleven_flash_v2_5`), the spoken prep briefing, and speech-to-text (Scribe) in the web app | Free plan (coupon adds credits) |
-| **Groq** (now) / **Featherless** (when the coupon works) | Writes the line to say, classifies unusual questions, and writes Prep mode plans | Free |
+| **Featherless** (main) / **Groq**, **Gemini** (backups) | Writes the line to say, classifies unusual questions, and writes Prep mode plans | Free |
 | **Render** | Hosts the web service. Prep mode runs as a **Render Workflow** with parallel subtasks | Free web plan; Workflows use hacker credits |
 | **Agentboxd** | Townie's own email inbox: email it your friends' plans, and it replies with a cheat sheet | Free Builder plan, code `LARPHACKS-2026` |
 | **OpenStreetMap** | Real places via Nominatim, with Overpass as backup. No key needed | Free |
@@ -16,11 +16,11 @@ LarpHacks 2026 · Theme: *Create a product to help you LARP as someone you are n
 
 ```
 Back Tap → iPhone Shortcut (dictate + GPS) → POST /api/ask → intent (keyword rules, LLM if unclear)
-→ real facts (landmark list + OpenStreetMap) → Groq or Featherless writes ≤25 words → ElevenLabs MP3 → AirPods
+→ real facts (landmark list + OpenStreetMap) → Featherless writes a short answer → ElevenLabs MP3 → AirPods
                                                                    └→ /live judge screen (big text + map)
 ```
 
-- **Switching language models needs no code change.** Townie tries every provider that has a key, in `LLM_ORDER` (default `groq,featherless,gemini`). To move to Featherless, paste `FEATHERLESS_API_KEY` and set `LLM_ORDER=featherless,groq`.
+- **Switching language models needs no code change.** Townie tries every provider that has a key, in `LLM_ORDER` (default `featherless,gemini,groq`). Change the order to switch, no code needed.
 - If ElevenLabs fails or runs out of free credits, a free Edge voice (`en-CA-ClaraNeural`) speaks instead. The `/live` screen shows which voice was used.
 - Answers use only real places. If the language model is down, a template line is built from the same facts. If everything is down, it says "Give me one sec, let me check my maps."
 - `data/osm_snapshot.json` stores nearby places for the demo spots, so the demo works even when the free OpenStreetMap servers are busy.

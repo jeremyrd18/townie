@@ -51,7 +51,7 @@ async def write_plan(area: dict, interests: str, coffee: list, food: list, sight
     reply = await llm.chat([
         {"role": "system", "content": PLAN_SYSTEM},
         {"role": "user", "content": "DATA: " + json.dumps(data, ensure_ascii=False)},
-    ], max_tokens=700, temperature=0.6, timeout=30.0)
+    ], max_tokens=700, temperature=0.6, timeout=30.0, hedge=15.0)
     plan = llm.parse_json(reply)
     if not plan or not plan.get("stops"):
         plan = template_plan(area, coffee, food, landmarks)

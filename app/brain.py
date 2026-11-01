@@ -92,7 +92,7 @@ async def llm_intent(question: str) -> dict:
             '"destination": a place name or null}'
         )},
         {"role": "user", "content": question},
-    ], max_tokens=60, temperature=0, timeout=4.0)
+    ], max_tokens=60, temperature=0, timeout=4.0, hedge=1.5)
     data = llm.parse_json(reply) or {}
     intent = data.get("intent") if data.get("intent") in INTENTS else "other"
     category = data.get("category") if data.get("category") in CATEGORY_WORDS else None

@@ -20,7 +20,7 @@ BACKUP_VOICE = env("BACKUP_VOICE", "en-CA-ClaraNeural")
 VOICE_SPEED = min(1.2, max(0.7, float(env("VOICE_SPEED", "0.9"))))
 
 # Language models. Townie uses whichever have keys, in this order.
-LLM_ORDER = env("LLM_ORDER", "gemini,groq,featherless")
+LLM_ORDER = env("LLM_ORDER", "featherless,gemini,groq")
 
 GROQ_API_KEY = env("GROQ_API_KEY")
 GROQ_MODEL = env("GROQ_MODEL", "openai/gpt-oss-120b")

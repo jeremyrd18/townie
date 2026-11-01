@@ -23,7 +23,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: LLM_ORDER
-        value: gemini,groq,featherless
+        value: featherless,gemini,groq
       - key: VOICE_SPEED
         value: "0.9"
       - key: WHISPER_VOICE_ID
