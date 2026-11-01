@@ -66,6 +66,7 @@ async def api_config():
         "demo_spots": DEMO_SPOTS,
         "voice": bool(config.ELEVENLABS_API_KEY),
         "llm": llm.describe(),
+        "llm_chain": [f"{name}:{model}" for name, _, _, model in llm.active()],  # names only, never keys
         "workflow": bool(config.RENDER_API_KEY and config.WORKFLOW_SLUG),
         "email": mail.enabled(),
     }
