@@ -143,6 +143,7 @@ def describe(name, lat, lon, from_lat, from_lon, heading=None, **extra) -> dict:
         "lat": round(lat, 6),
         "lon": round(lon, 6),
         "distance_m": round(km * 1000),
+        "distance_km": round(km * 1.3, 1),  # walking route, not a straight line
         "walk_min": walk_minutes(km),
         "direction": direction_words(b, heading),
         "bearing": round(b),

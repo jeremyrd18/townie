@@ -121,6 +121,9 @@ async def gather_facts(intent: dict, question: str, lat: float, lon: float, head
         if not found:
             found = await places.nearby(lat, lon, cat, radius=1200, heading=heading, skip_chains=skip_chains)
         facts["category"] = cat
+        if kind == "nearest":  # only what a "where's the nearest" answer needs
+            keep = ("name", "lat", "lon", "walk_min", "direction", "street", "distance_km")
+            found = [{k: p[k] for k in keep if k in p} for p in found]
         facts["places"] = found[:3]
         if kind == "recommend" or cat == "attraction":
             facts["landmarks"] = places.nearest_landmarks(lat, lon, heading, limit=2)
@@ -130,9 +133,10 @@ async def gather_facts(intent: dict, question: str, lat: float, lon: float, head
         lm = find_in_text(dest) or find_in_text(question)
         target = {"name": lm["name"], "lat": lm["lat"], "lon": lm["lon"]} if lm else await places.search(dest)
         if target:
-            info = places.describe(target["name"], target["lat"], target["lon"], lat, lon, heading,
-                                   fun_fact=lm["fact"] if lm else None)
+            info = places.describe(target["name"], target["lat"], target["lon"], lat, lon, heading)
             info["walkable"] = info["walk_min"] <= 25
+            if info["walk_min"] > 40:
+                info["too_far_to_walk"] = True
             facts["destination"] = info
 
     elif kind == "whats_here":
@@ -168,20 +172,28 @@ async def gather_facts(intent: dict, question: str, lat: float, lon: float, head
 
 SAY_SYSTEM = (
     "You are Townie, a quiet earpiece for someone showing friends around Toronto. "
-    "Whisper the key facts of the answer in plain, simple words. They will explain it in their own words, "
-    "so do not write a script or a line to say.\n"
+    "Whisper the answer in plain, simple words. They will say it in their own words, so do not write a script.\n"
     "Rules:\n"
-    "- Big picture only: the main answer plus at most one useful detail. 15 words or fewer.\n"
-    "- Simple everyday words. Short fragments are fine. No filler like honestly, yeah, sure, let's, just, trust me.\n"
-    "- Places, distances, walking times and directions: use ONLY what FACTS give. Never invent a business or address.\n"
-    "- Everything else (history, sports, food, culture, transit tips): answer from your own knowledge, accurately.\n"
-    "- Mention walking time or direction only when they asked where something is or how to get somewhere. "
-    "Give minutes, never metres.\n"
+    "- Answer ONLY the exact question. Nothing extra: no fun facts, history, tips or descriptions "
+    "unless the question asks for them. 12 words or fewer.\n"
+    "- Where is X / how far / can we walk: walking minutes and direction, plus distance in km if it is over 1 km. "
+    "Nothing else. Always give the walking time, even for long walks, "
+    "UNLESS too_far_to_walk is true: only then give the best way there instead "
+    "(TTC line, UP Express, streetcar, or cab) with a rough travel time.\n"
+    "- Nearest / find a place: the place name, walking minutes and direction or street. Nothing else.\n"
+    "- Knowledge questions (how tall, when, why, what is): just the direct answer, like a number, year or short definition.\n"
+    "- Fun fact, tell me about, what's that building: a short answer with one interesting detail is fine.\n"
+    "- Places, distances, walking times and directions: use ONLY what FACTS give. Never invent a business or address. "
+    "Other knowledge comes from what you know, accurately.\n"
+    "- Minutes, never metres. Simple words, short fragments are fine. No filler like honestly, yeah, sure, let's, just.\n"
     "- Plain punctuation, no dashes. Never mention apps, maps, GPS, or data. Never say you don't know.\n"
     "Examples of the style (not real answers):\n"
-    "Q: how tall is the CN Tower -> 553 metres. Tallest in the world for over 30 years.\n"
+    "Q: where is the CN Tower -> 32 minutes southeast, about 2.5 km.\n"
     "Q: can we walk to the CN Tower -> Yes, about 9 minutes southwest.\n"
+    "Q: how tall is the CN Tower -> 553 metres.\n"
+    "Q: how do we get to Pearson airport -> UP Express from Union, about 25 minutes.\n"
     "Q: nearest coffee -> [cafe from FACTS], 2 minutes south on [street from FACTS].\n"
+    "Q: tell me something cool about the CN Tower -> You can walk around the outside ledge, 356 metres up.\n"
     "Output only the answer, no quotes."
 )
 
@@ -192,13 +204,13 @@ async def write_line(question: str, facts: dict) -> str:
     reply = await llm.chat([
         {"role": "system", "content": SAY_SYSTEM},
         {"role": "user", "content": f"Friend asked: {question}\nTime in Toronto: {now}\nFACTS: {compact}"},
-    ], max_tokens=50, temperature=0.3, timeout=5.0)
+    ], max_tokens=40, temperature=0.2, timeout=5.0)
     line = _clean(reply) if reply else ""
     return (line, llm.describe()) if line else (template_line(facts), "template")
 
 
 def _trim(facts: dict) -> dict:
-    drop = {"lat", "lon", "bearing"}
+    drop = {"lat", "lon", "bearing", "walkable"}
     def strip(v):
         if isinstance(v, dict):
             return {k: strip(x) for k, x in v.items() if k not in drop}
@@ -215,6 +227,8 @@ def _clean(text: str) -> str:
     text = text.strip().strip('"“”').split("\n")[0].strip()
     for a, b in {"\u2011": "-", "\u2010": "-", "\u00a0": " ", " — ": ", ", "—": ", ", " – ": ", ", "–": "-"}.items():
         text = text.replace(a, b)
+    if text:
+        text = text[0].upper() + text[1:]
     words = text.split()
     if len(words) > 22:
         text = " ".join(words[:20]).rstrip(",;") + "."
@@ -231,9 +245,12 @@ def template_line(facts: dict) -> str:
         return line[0].upper() + line[1:]
     if kind == "distance" and facts.get("destination"):
         d = facts["destination"]
+        km = f", about {d['distance_km']} km" if d["distance_km"] >= 1 else ""
+        if d.get("too_far_to_walk"):
+            return f"Too far to walk, about {d['distance_km']} km {d['direction']}. Take the TTC or a cab."
         if d["walkable"]:
-            return f"Yes, about {d['walk_min']} minutes {d['direction']}."
-        return f"{d['name']} is {d['walk_min']} minutes on foot. Better to take the TTC."
+            return f"About {d['walk_min']} minutes {d['direction']}{km}."
+        return f"{d['walk_min']} minutes {d['direction']} on foot{km}. Better to take the TTC."
     if kind == "whats_here":
         if facts.get("ahead"):
             return f"That's {facts['ahead']['name']}."
