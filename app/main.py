@@ -86,11 +86,16 @@ async def api_check():
                     **llm._model_options(model, 20)})
             status = r.status_code
             detail = "" if status == 200 else r.text[:200]
+            hd = r.headers
+            left = hd.get("x-ratelimit-remaining-requests")
+            limit = hd.get("x-ratelimit-limit-requests")
         except Exception as e:
-            status, detail = "error", repr(e)[:200]
-        out.append({"model": f"{name}:{model}", "status": status,
-                    "seconds": round(time.perf_counter() - t, 2), "detail": detail})
-    return {"models": out}
+            status, detail, left, limit = "error", repr(e)[:200], None, None
+        out.append({"model": f"{name}:{model}", "status": "OK" if status == 200 else status,
+                    "seconds": round(time.perf_counter() - t, 2),
+                    "requests_left_today": f"{left} of {limit}" if left and limit else "not reported",
+                    "detail": detail})
+    return {"models": out, "note": "Each check uses 1 request per model."}
 
 
 # ---------- ask ----------
