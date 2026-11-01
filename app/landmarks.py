@@ -117,6 +117,18 @@ LANDMARKS = [
         "fact": "in the sixties it was Canada's hippie capital, and Joni Mitchell played the coffee houses there",
     },
     {
+        "name": "Pearson Airport",
+        "aliases": ["pearson airport", "pearson", "the airport", "airport", "yyz"],
+        "lat": 43.6777, "lon": -79.6248,
+        "fact": "the UP Express train gets you from Union Station to Pearson in about 25 minutes, way faster than a cab",
+    },
+    {
+        "name": "Billy Bishop Airport",
+        "aliases": ["billy bishop airport", "billy bishop", "island airport", "toronto island airport"],
+        "lat": 43.6287, "lon": -79.3962,
+        "fact": "you get there through a pedestrian tunnel under the harbour, it's one of the few downtown airports in the world",
+    },
+    {
         "name": "University of Toronto",
         "aliases": ["university of toronto", "u of t", "uoft", "u of toronto", "uoft campus"],
         "lat": 43.6629, "lon": -79.3957,

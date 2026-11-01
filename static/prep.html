@@ -28,7 +28,7 @@
       <h1 class="brand">Town<span>ie</span> prep</h1>
       <nav class="nav"><a href="/">Ask</a><a href="/live" target="_blank">Judge screen</a></nav>
     </div>
-    <p class="tag">Friends landing tomorrow? Get a day plan and five things to casually mention, before they arrive.</p>
+    <p class="tag">Friends landing tomorrow? Get a simple day plan and five fun facts before they arrive.</p>
 
     <form class="panel" id="form">
       <div class="grid2">
@@ -53,7 +53,7 @@
       <p class="q" id="opener"></p>
       <audio id="briefing" controls style="width:100%;margin:12px 0" hidden></audio>
       <div id="stops"></div>
-      <h3 style="margin:18px 0 0">Five things to casually mention</h3>
+      <h3 style="margin:18px 0 0">Five fun facts</h3>
       <ol id="facts"></ol>
     </section>
 
@@ -99,9 +99,9 @@
         d.emailed ? `<span class="badge ok">Emailed to ${esc(d.emailed)}</span>` : "",
       ].join("");
       $("title").textContent = p.title || "Your day";
-      $("opener").textContent = p.opener ? `Opener: “${p.opener}”` : "";
+      $("opener").textContent = p.opener || "";
       $("stops").innerHTML = (p.stops || []).map((s) =>
-        `<div class="stop"><span class="t">${esc(s.time)}</span><div><b>${esc(s.place)}</b><i>“${esc(s.line)}”</i></div></div>`).join("");
+        `<div class="stop"><span class="t">${esc(s.time)}</span><div><b>${esc(s.place)}</b><i>${esc(s.line)}</i></div></div>`).join("");
       $("facts").innerHTML = (p.fun_facts || []).map((f) => `<li>${esc(f)}</li>`).join("");
       if (d.briefing_b64) {
         $("briefing").hidden = false;

@@ -1,6 +1,6 @@
 """Language model calls. Every provider here speaks the OpenAI chat format, so switching is just env vars.
 
-Townie tries each provider that has a key, in LLM_ORDER (default: groq, featherless, gemini),
+Townie tries each provider that has a key, in LLM_ORDER (default: gemini, groq, featherless),
 and each provider's main model before its backup model. Add a key and it joins the list."""
 import json
 import re
@@ -44,9 +44,13 @@ def enabled() -> bool:
     return bool(active())
 
 
+last_used: str | None = None
+
+
 def describe() -> str:
+    """The model that answered the most recent call (or the first in line)."""
     chain = active()
-    return f"{chain[0][0]}:{chain[0][3]}" if chain else "none (template lines)"
+    return last_used or (f"{chain[0][0]}:{chain[0][3]}" if chain else "none (template lines)")
 
 
 def _model_options(model: str, max_tokens: int) -> dict:
@@ -54,12 +58,17 @@ def _model_options(model: str, max_tokens: int) -> dict:
     m = model.lower()
     if "gpt-oss" in m:
         return {"reasoning_effort": "low", "max_tokens": max_tokens + 400}
+    if m.startswith("gemini-2.5"):
+        return {"reasoning_effort": "none" if "flash" in m else "low", "max_tokens": max_tokens + 300}
+    if m.startswith("gemini"):
+        return {"reasoning_effort": "low", "max_tokens": max_tokens + 600}
     if m.startswith("qwen/qwen3"):
         return {"reasoning_format": "hidden", "max_tokens": max_tokens + 600}
     return {"max_tokens": max_tokens}
 
 
 async def chat(messages: list, max_tokens: int = 120, temperature: float = 0.5, timeout: float = 6.0) -> str | None:
+    global last_used
     for i, (name, url, key, model) in enumerate(active()):
         try:
             async with httpx.AsyncClient(timeout=timeout if i == 0 else max(3.0, timeout * 0.7)) as client:
@@ -70,7 +79,9 @@ async def chat(messages: list, max_tokens: int = 120, temperature: float = 0.5, 
                     **_model_options(model, max_tokens),
                 })
                 r.raise_for_status()
-                return r.json()["choices"][0]["message"]["content"].strip()
+                text = r.json()["choices"][0]["message"]["content"].strip()
+                last_used = f"{name}:{model}"
+                return text
         except Exception as e:
             print(f"[llm] {name}/{model} failed: {e!r}")
     return None

@@ -111,7 +111,7 @@ async function send(body, isForm) {
     show(await res.json());
     setBusy(false, "Say it like you always knew.");
   } catch {
-    show({ say: "Give me one sec, let me check my maps.", seconds: "–" });
+    show({ say: "One sec, still checking.", seconds: "–" });
     setBusy(false, "Connection hiccup. Try again.");
   }
 }

@@ -112,7 +112,7 @@ async def ask(request: Request):
         lat, lon = spot["lat"], spot["lon"]
 
     if not question:
-        result = {"say": "Sorry, say that again? It's loud out here.", "intent": {"intent": "other"}, "facts": {}}
+        result = {"say": "Didn't catch that. Ask again.", "intent": {"intent": "other"}, "facts": {}}
     else:
         result = await brain.answer(question, lat, lon, heading)
 

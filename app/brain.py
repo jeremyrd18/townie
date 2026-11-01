@@ -9,9 +9,8 @@ from . import llm, places
 from .landmarks import find_in_text
 
 FALLBACK_LINES = [
-    "Give me one sec, let me check my maps.",
-    "Ooh, good question, hold on, I'm blanking on the name.",
-    "Okay so, give me a second, I always mix those two up.",
+    "One sec, still checking.",
+    "No answer yet. Try asking again.",
 ]
 
 CATEGORY_WORDS = {
@@ -25,7 +24,14 @@ CATEGORY_WORDS = {
     "attraction": ["attraction", "museum", "sightseeing", "touristy", "viewpoint", "gallery"],
 }
 
-INTENTS = ["nearest", "distance", "whats_here", "recommend", "fact", "other"]
+INTENTS = ["nearest", "distance", "whats_here", "recommend", "fact", "general", "other"]
+
+# Questions answered from the model's own knowledge, not a map lookup.
+GENERAL_STARTS = ("who ", "when ", "why ", "how tall", "how old", "how big", "how many", "how much", "what year",
+                  "what is a ", "what's a ", "whats a ", "what does ", "is it true", "do you know")
+GENERAL_WORDS = ["known for", "famous for", "population", "mayor", "nickname", "called the", "the six", "the 6ix",
+                 "safe", "weather", "tip", "tipping", "currency", "history of", "invented", "championship",
+                 "won the", "slang", "accent", "tax", "pronounce"]
 
 
 def _has(text: str, words) -> bool:
@@ -42,8 +48,12 @@ def rule_intent(question: str) -> dict | None:
                 "that building", "this building", "where are we", "what building", "what are we looking at"]):
         return {"intent": "whats_here", "category": "building", "destination": None}
 
-    if _has(q, ["walk", "walking", "how far", "how long", "get to", "close enough", "far is", "far are",
-                "minutes to", "far from", "distance"]):
+    asks_where = _has(q, ["where", "nearest", "closest", "nearby", "near here", "around here", "is there"])
+    if (q.startswith(GENERAL_STARTS) or _has(q, GENERAL_WORDS)) and not (category and asks_where):
+        return {"intent": "general", "category": None, "destination": landmark["name"] if landmark else None}
+
+    if _has(q, ["walk to", "walking to", "how far", "how long", "get to", "close enough", "far is", "far are",
+                "minutes to", "far from", "distance", "walkable", "go to", "head to"]):
         dest = landmark["name"] if landmark else _destination_text(q)
         if dest:
             return {"intent": "distance", "category": None, "destination": dest}
@@ -65,7 +75,7 @@ def rule_intent(question: str) -> dict | None:
 
 
 def _destination_text(q: str) -> str | None:
-    m = re.search(r"(?:walk to|get to|go to|far is|far to|to get to|minutes to|from here to|to)\s+(?:the\s+)?([a-z0-9' .&-]{3,40})", q)
+    m = re.search(r"(?:walk to|walking to|get to|go to|head to|far is|far to|minutes to|from here to)\s+(?:the\s+)?([a-z0-9' .&-]{3,40})", q)
     if not m:
         return None
     dest = re.sub(r"\b(from here|from us|right now|now|please|tonight)\b.*$", "", m.group(1)).strip(" ?.!")
@@ -75,8 +85,9 @@ def _destination_text(q: str) -> str | None:
 async def llm_intent(question: str) -> dict:
     reply = await llm.chat([
         {"role": "system", "content": (
-            "Classify a tourist's question in Toronto. Reply with JSON only: "
-            '{"intent": one of nearest|distance|whats_here|recommend|fact|other, '
+            "Classify a tourist's question in Toronto. Use general for knowledge questions that need no map "
+            "(history, sports, food culture, how things work). Reply with JSON only: "
+            '{"intent": one of nearest|distance|whats_here|recommend|fact|general|other, '
             '"category": one of coffee|food|washroom|subway|bar|atm|pharmacy|attraction|null, '
             '"destination": a place name or null}'
         )},
@@ -134,6 +145,12 @@ async def gather_facts(intent: dict, question: str, lat: float, lon: float, head
         facts["here"] = await places.reverse(lat, lon)
         facts["landmarks"] = places.nearest_landmarks(lat, lon, heading, limit=2, max_km=1.2)
 
+    elif kind == "general":
+        lm = find_in_text(question)
+        if lm:
+            facts["landmarks"] = [places.describe(lm["name"], lm["lat"], lm["lon"], lat, lon, heading, fun_fact=lm["fact"])]
+        facts["note"] = "General knowledge question. Answer from what you know; no directions needed."
+
     elif kind == "fact":
         lm = find_in_text(question)
         if lm:
@@ -150,16 +167,22 @@ async def gather_facts(intent: dict, question: str, lat: float, lon: float, head
 
 
 SAY_SYSTEM = (
-    "You are Townie, a secret earpiece whispering to someone who is pretending to be a confident Toronto local "
-    "while showing friends around. Write ONE sentence they will say out loud, word for word.\n"
+    "You are Townie, a quiet earpiece for someone showing friends around Toronto. "
+    "Whisper the key facts of the answer in plain, simple words. They will explain it in their own words, "
+    "so do not write a script or a line to say.\n"
     "Rules:\n"
-    "- First person, casual, confident, like a born-and-raised Torontonian. Under 20 words, easy to say in one breath.\n"
-    "- Use ONLY places, names, and numbers that appear in FACTS. Never invent a place.\n"
-    "- Give walking time in minutes, never metres. Include the direction or street when FACTS have it.\n"
-    "- When it fits, add one short local touch from FACTS, like a fun fact. Plain punctuation: no dashes.\n"
-    "- Never mention apps, maps, GPS, data, or that you looked anything up.\n"
-    "- If FACTS have nothing useful, give a natural stalling line.\n"
-    "Output only the sentence, no quotes."
+    "- Big picture only: the main answer plus at most one useful detail. 15 words or fewer.\n"
+    "- Simple everyday words. Short fragments are fine. No filler like honestly, yeah, sure, let's, just, trust me.\n"
+    "- Places, distances, walking times and directions: use ONLY what FACTS give. Never invent a business or address.\n"
+    "- Everything else (history, sports, food, culture, transit tips): answer from your own knowledge, accurately.\n"
+    "- Mention walking time or direction only when they asked where something is or how to get somewhere. "
+    "Give minutes, never metres.\n"
+    "- Plain punctuation, no dashes. Never mention apps, maps, GPS, or data. Never say you don't know.\n"
+    "Examples of the style (not real answers):\n"
+    "Q: how tall is the CN Tower -> 553 metres. Tallest in the world for over 30 years.\n"
+    "Q: can we walk to the CN Tower -> Yes, about 9 minutes southwest.\n"
+    "Q: nearest coffee -> [cafe from FACTS], 2 minutes south on [street from FACTS].\n"
+    "Output only the answer, no quotes."
 )
 
 
@@ -169,7 +192,7 @@ async def write_line(question: str, facts: dict) -> str:
     reply = await llm.chat([
         {"role": "system", "content": SAY_SYSTEM},
         {"role": "user", "content": f"Friend asked: {question}\nTime in Toronto: {now}\nFACTS: {compact}"},
-    ], max_tokens=70, temperature=0.6, timeout=5.0)
+    ], max_tokens=50, temperature=0.3, timeout=5.0)
     line = _clean(reply) if reply else ""
     return (line, llm.describe()) if line else (template_line(facts), "template")
 
@@ -193,38 +216,38 @@ def _clean(text: str) -> str:
     for a, b in {"\u2011": "-", "\u2010": "-", "\u00a0": " ", " — ": ", ", "—": ", ", " – ": ", ", "–": "-"}.items():
         text = text.replace(a, b)
     words = text.split()
-    if len(words) > 28:
-        text = " ".join(words[:26]).rstrip(",;") + "."
+    if len(words) > 22:
+        text = " ".join(words[:20]).rstrip(",;") + "."
     return text
 
 
 def template_line(facts: dict) -> str:
-    """No model needed: a plain line built from the facts, so the demo survives an outage."""
+    """No model needed: a short summary built from the facts, so the demo survives an outage."""
     kind = facts.get("intent")
     if facts.get("places"):
         p = facts["places"][0]
         street = f" on {p['street']}" if p.get("street") else ""
-        line = f"{p['name']} is about {_mins(p['walk_min'])} away, {_dir(p['direction'])}{street}."
+        line = f"{p['name']}, {_mins(p['walk_min'])} {_dir(p['direction'])}{street}."
         return line[0].upper() + line[1:]
     if kind == "distance" and facts.get("destination"):
         d = facts["destination"]
         if d["walkable"]:
-            return f"Yeah, {d['name']} is about a {d['walk_min']} minute walk, head {d['direction']}."
-        return f"{d['name']} is more like {d['walk_min']} minutes on foot, honestly let's hop on the TTC."
+            return f"Yes, about {d['walk_min']} minutes {d['direction']}."
+        return f"{d['name']} is {d['walk_min']} minutes on foot. Better to take the TTC."
     if kind == "whats_here":
         if facts.get("ahead"):
-            return f"Oh, that's {facts['ahead']['name']}, right in front of us."
+            return f"That's {facts['ahead']['name']}."
         here = facts.get("here") or {}
         lm = (facts.get("landmarks") or [None])[0]
         if lm and lm["distance_m"] < 250:
-            return f"That's {lm['name']}. Fun fact, {lm['fun_fact']}."
+            return f"{lm['name']}. {lm['fun_fact'][0].upper() + lm['fun_fact'][1:]}."
         if here.get("name"):
-            return f"That's {here['name']}" + (f", right on {here['road']}." if here.get("road") else ".")
+            return f"That's {here['name']}" + (f" on {here['road']}." if here.get("road") else ".")
     if facts.get("landmarks"):
         lm = facts["landmarks"][0]
         if lm.get("fun_fact"):
-            return f"Fun fact about {lm['name']}: {lm['fun_fact']}."
-        return f"We're right by {lm['name']}, about {_mins(lm['walk_min'])} {lm['direction']}."
+            return f"{lm['name']}: {lm['fun_fact']}."
+        return f"{lm['name']}, {_mins(lm['walk_min'])} {lm['direction']}."
     return random.choice(FALLBACK_LINES)
 
 
@@ -233,7 +256,7 @@ def _mins(n: int) -> str:
 
 
 def _dir(direction: str) -> str:
-    return direction if direction.startswith(("on your", "straight", "behind")) else f"just {direction}"
+    return direction
 
 
 def map_points(facts: dict) -> list:

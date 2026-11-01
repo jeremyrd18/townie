@@ -16,9 +16,11 @@ TTS_MODEL = env("TTS_MODEL", "eleven_flash_v2_5")
 STT_MODEL = env("STT_MODEL", "scribe_v2")
 # Free backup voice (Microsoft Edge voices, no key) when ElevenLabs fails or runs out of credits.
 BACKUP_VOICE = env("BACKUP_VOICE", "en-CA-ClaraNeural")
+# Speaking speed: 1.0 is normal, 0.85 is calm and easy to repeat. ElevenLabs allows 0.7 to 1.2.
+VOICE_SPEED = min(1.2, max(0.7, float(env("VOICE_SPEED", "0.9"))))
 
 # Language models. Townie uses whichever have keys, in this order.
-LLM_ORDER = env("LLM_ORDER", "groq,featherless,gemini")
+LLM_ORDER = env("LLM_ORDER", "gemini,groq,featherless")
 
 GROQ_API_KEY = env("GROQ_API_KEY")
 GROQ_MODEL = env("GROQ_MODEL", "openai/gpt-oss-120b")

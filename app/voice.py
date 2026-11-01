@@ -38,7 +38,7 @@ async def _edge(text: str) -> bytes | None:
     try:
         import edge_tts
         data = b""
-        async for chunk in edge_tts.Communicate(text, voice=config.BACKUP_VOICE, rate="+5%").stream():
+        async for chunk in edge_tts.Communicate(text, voice=config.BACKUP_VOICE, rate=f"{round((config.VOICE_SPEED - 1) * 100):+d}%").stream():
             if chunk["type"] == "audio":
                 data += chunk["data"]
         return data or None
@@ -60,7 +60,7 @@ async def _elevenlabs(text: str) -> bytes | None:
                     "text": text,
                     "model_id": config.TTS_MODEL,
                     # Low style + high stability keeps it soft and even, like a whisper in your ear.
-                    "voice_settings": {"stability": 0.6, "similarity_boost": 0.8, "style": 0.0, "speed": 1.05},
+                    "voice_settings": {"stability": 0.6, "similarity_boost": 0.8, "style": 0.0, "speed": config.VOICE_SPEED},
                 },
             )
             if r.status_code >= 400:

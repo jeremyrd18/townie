@@ -39,9 +39,9 @@ PLAN_SYSTEM = (
     "You help a homebody fake being a seasoned Toronto local for visiting friends. "
     "Using ONLY the places in DATA, write a relaxed day plan and talking points. Reply with JSON only:\n"
     '{"title": short catchy title, '
-    '"stops": [{"time": "11:00 AM", "place": exact name from DATA, "line": one confident first-person sentence to say there}] (4 to 5 stops, walkable order), '
-    '"fun_facts": [exactly 5 short facts phrased the way a local would casually say them, taken from DATA], '
-    '"opener": one line to say when the friends arrive}'
+    '"stops": [{"time": "11:00 AM", "place": exact name from DATA, "line": a short plain note on why go there, under 12 words}] (4 to 5 stops, walkable order), '
+    '"fun_facts": [exactly 5 short, simple facts from DATA], '
+    '"opener": one simple sentence summing up the day}'
 )
 
 
@@ -66,16 +66,16 @@ async def write_plan(area: dict, interests: str, coffee: list, food: list, sight
 def template_plan(area: dict, coffee: list, food: list, landmarks: list) -> dict:
     stops = []
     if coffee:
-        stops.append({"time": "10:30 AM", "place": coffee[0]["name"], "line": f"First, coffee at {coffee[0]['name']}, trust me."})
+        stops.append({"time": "10:30 AM", "place": coffee[0]["name"], "line": "Coffee to start the day."})
     for t, lm in zip(["11:30 AM", "1:30 PM", "3:30 PM"], landmarks[:3]):
-        stops.append({"time": t, "place": lm["name"], "line": f"Okay, fun fact: {lm['fact']}."})
+        stops.append({"time": t, "place": lm["name"], "line": lm["fact"][0].upper() + lm["fact"][1:] + "."})
     if food:
-        stops.insert(2, {"time": "12:45 PM", "place": food[0]["name"], "line": f"Lunch is {food[0]['name']}, it's a local favourite."})
+        stops.insert(2, {"time": "12:45 PM", "place": food[0]["name"], "line": "Lunch."})
     return {
         "title": f"A day around {area['name']}",
         "stops": stops,
         "fun_facts": [f"{l['name']}: {l['fact']}" for l in landmarks[:5]],
-        "opener": f"Welcome! I've got the whole day planned around {area['name']}.",
+        "opener": f"A walkable day around {area['name']}.",
     }
 
 
@@ -101,24 +101,24 @@ def briefing_text(plan: dict) -> str:
 
 
 def email_bodies(plan: dict) -> tuple[str, str]:
-    text_lines = [plan.get("title", "Your Townie plan"), "", f"Opener: {plan.get('opener', '')}", "", "The day:"]
+    text_lines = [plan.get("title", "Your Townie plan"), "", plan.get("opener", ""), "", "The day:"]
     for s in plan.get("stops", []):
-        text_lines.append(f"  {s.get('time', '')}  {s.get('place', '')}: \"{s.get('line', '')}\"")
-    text_lines += ["", "Five things to casually mention:"] + [f"  - {f}" for f in plan.get("fun_facts", [])]
+        text_lines.append(f"  {s.get('time', '')}  {s.get('place', '')}: {s.get('line', '')}")
+    text_lines += ["", "Five fun facts:"] + [f"  - {f}" for f in plan.get("fun_facts", [])]
     text_lines += ["", "Ask Townie anything on the day with a double-tap. Nobody has to know.", "- Townie"]
 
     e = html.escape
     rows = "".join(
         f"<tr><td style='padding:6px 12px 6px 0;color:#888;white-space:nowrap'>{e(s.get('time',''))}</td>"
-        f"<td style='padding:6px 0'><b>{e(s.get('place',''))}</b><br><i>“{e(s.get('line',''))}”</i></td></tr>"
+        f"<td style='padding:6px 0'><b>{e(s.get('place',''))}</b><br><i>{e(s.get('line',''))}</i></td></tr>"
         for s in plan.get("stops", [])
     )
     facts = "".join(f"<li>{e(f)}</li>" for f in plan.get("fun_facts", []))
     body = (
         f"<div style='font-family:system-ui,sans-serif;max-width:560px'>"
         f"<h2 style='margin:0 0 4px'>{e(plan.get('title','Your Townie plan'))}</h2>"
-        f"<p style='color:#555'>Opener: <i>“{e(plan.get('opener',''))}”</i></p>"
-        f"<table>{rows}</table><h3>Five things to casually mention</h3><ul>{facts}</ul>"
+        f"<p style='color:#555'>{e(plan.get('opener',''))}</p>"
+        f"<table>{rows}</table><h3>Five fun facts</h3><ul>{facts}</ul>"
         f"<p style='color:#888'>Double-tap the back of your phone to ask Townie anything. Nobody has to know.</p></div>"
     )
     return "\n".join(text_lines), body
