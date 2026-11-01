@@ -53,8 +53,14 @@ FRESH_WORDS = ["now", "right now", "today", "tonight", "this week", "this weeken
                "cost", "tickets", "schedule", "news", "2025", "2026"]
 
 
-def needs_web(question: str) -> bool:
-    return _has(question.lower().replace("’", "'"), FRESH_WORDS)
+# Ratings and reviews are not in the map data, so these also use the web.
+RATING_WORDS = ["rating", "ratings", "rated", "highest rated", "top rated", "top-rated", "best rated", "reviews",
+                "review", "popular", "famous", "best", "highly rated", "stars", "michelin"]
+
+
+def needs_web(question: str, kind: str | None = None) -> bool:
+    q = question.lower().replace("’", "'")
+    return _has(q, FRESH_WORDS) or (kind == "recommend" and _has(q, RATING_WORDS))
 
 # Questions answered from the model's own knowledge, not a map lookup.
 GENERAL_STARTS = ("who ", "when ", "why ", "how tall", "how old", "how big", "how many", "how much", "what year",
@@ -95,7 +101,7 @@ def rule_intent(question: str) -> dict | None:
 
     if category:
         wants_rec = _has(q, ["should", "recommend", "best", "good", "favourite", "favorite", "isn't a chain",
-                             "not a chain", "local", "worth"])
+                             "not a chain", "local", "worth"] + RATING_WORDS)
         return {"intent": "recommend" if wants_rec else "nearest", "category": category, "destination": None}
 
     if _has(q, ["tonight", "this weekend", "happening", "going on", "events", "concert", "festival", "game tonight"]):
@@ -161,6 +167,8 @@ async def gather_facts(intent: dict, question: str, lat: float, lon: float, head
                 found = await places.search_near(f"{cuisine} restaurant" if cuisine not in ("sushi", "pho", "ramen", "pizza") else cuisine,
                                                  lat, lon, radius=1500, heading=heading)
             facts["cuisine"] = cuisine
+            if not found:
+                facts["no_match"] = True
         else:
             radius = 500 if kind == "nearest" else 800
             found = await places.nearby(lat, lon, cat, radius=radius, heading=heading, skip_chains=skip_chains)
@@ -230,12 +238,15 @@ SAY_SYSTEM = (
     "- Knowledge questions (how tall, when, why, what is): just the direct answer, like a number, year or short definition.\n"
     "- Fun fact, tell me about, what's that building: a short answer with one interesting detail is fine.\n"
     "- If FACTS include web_results, answer from them; they are live and newer than what you know. "
+    "For best or top rated questions, name the best-reviewed place from web_results that also appears in places "
+    "(with its walking minutes), otherwise the closest place in places.\n"
+    "- "
     "Never invent specific times, games, scores or events that are not in FACTS.\n"
     "- Places, distances, walking times and directions: use ONLY what FACTS give. Never invent a business or address. "
     "Other knowledge comes from what you know, accurately.\n"
     "- Minutes, never metres. Simple words, short fragments are fine. No filler like honestly, yeah, sure, let's, just.\n"
     "- Plain punctuation, no dashes. Never mention apps, maps, GPS, data, FACTS, or a list. Never say you don't know.\n"
-    "- If no place in FACTS matches what they asked for, say none is close by and name the closest option.\n"
+    "- Only if FACTS has no_match: say none is close by and name the closest option.\n"
     "Examples of the style (not real answers):\n"
     "Q: where is the CN Tower -> 32 minutes southeast, about 2.5 km.\n"
     "Q: can we walk to the CN Tower -> Yes, about 9 minutes southwest.\n"
@@ -259,10 +270,13 @@ async def write_line(question: str, facts: dict, here: str = "") -> str:
     now = datetime.now(ZoneInfo("America/Toronto")).strftime("%A %B %-d, %Y, %-I:%M %p")
     kind = facts.get("intent")
     # Up-to-date questions: answer from live web results. Directions to nearby places stay on map data.
-    if config.WEB_SEARCH and kind in ("general", "fact", "other", "recommend") and needs_web(question):
+    if config.WEB_SEARCH and kind in ("general", "fact", "other", "recommend") and needs_web(question, kind):
+        nearby = "; ".join(f"{p['name']} ({p['walk_min']} min {p['direction']})" for p in facts.get("places") or [])
+        hint = (f"\nReal places within walking distance: {nearby}. Prefer one of these if the web backs it up, "
+                "and include its walking minutes and direction.") if nearby else ""
         reply = await llm.search_chat([
             {"role": "system", "content": SEARCH_SYSTEM},
-            {"role": "user", "content": f"Question: {question}\nNow in Toronto: {now}\nWe are near: {here or 'downtown Toronto'}"},
+            {"role": "user", "content": f"Question: {question}\nNow in Toronto: {now}\nWe are near: {here or 'downtown Toronto'}{hint}"},
         ])
         line = _clean(reply) if reply else ""
         if line:
@@ -278,6 +292,9 @@ async def write_line(question: str, facts: dict, here: str = "") -> str:
         {"role": "user", "content": f"Friend asked: {question}\nTime in Toronto: {now}\nFACTS: {compact}"},
     ], max_tokens=40, temperature=0.2, timeout=5.0)
     line = _clean(reply) if reply else ""
+    # "None is close by" is only allowed when a cuisine search really found nothing.
+    if line and facts.get("places") and not facts.get("no_match") and line.lower().startswith(("none", "no ")):
+        line = ""
     return (line, llm.describe()) if line else (template_line(facts), "template")
 
 

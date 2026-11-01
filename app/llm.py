@@ -133,7 +133,7 @@ async def chat(messages: list, max_tokens: int = 120, temperature: float = 0.5,
 CITATION = re.compile(r"【[^】]*】|\[\d+\]")
 
 
-async def search_chat(messages: list, timeout: float = 7.0) -> str | None:
+async def search_chat(messages: list, timeout: float = 5.0) -> str | None:
     """Answer with live web results (Groq's built-in browser search on gpt-oss). None on failure."""
     global last_used
     if not config.GROQ_API_KEY:
